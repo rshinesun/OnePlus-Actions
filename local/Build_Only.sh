@@ -5,7 +5,7 @@ set -e
 # --- Build Configuration ---
 clear
 echo "================================================="
-echo "  KernelSU Next OnePlus Kernel Build Configuration  "
+echo "     OnePlus Kernel Build Configuration          "
 echo "================================================="
 echo "Press Enter to accept the default value in [brackets]."
 echo ""
@@ -21,14 +21,14 @@ ask() {
 }
 
 # --- Interactive Inputs ---
-CPU=$(ask "Enter CPU branch (e.g., sm8650, sm8550)" "sm8650")
+CPU=$(ask "Enter CPU branch (e.g., sm8650, sm8550, sm8475)" "sm8650")
 FEIL=$(ask "Enter phone model (e.g., oneplus_12, oneplus_11)" "oneplus_12")
 CPUD=$(ask "Enter processor codename (e.g., pineapple, kalama, waipio)" "pineapple")
 ANDROID_VERSION=$(ask "Enter kernel Android version (android14, android13, android12)" "android14")
 KERNEL_VERSION=$(ask "Enter kernel version (6.1, 5.15, 5.10)" "6.1")
-lz4kd=$(ask "Enable lz4kd? (6.1 uses lz4+zstd if Off) (On/Off)" "Off")
+lz4kd=$(ask "Enable lz4kd? (6.1 uses lz4 + zstd if Off) (On/Off)" "Off")
 bbr=$(ask "Enable BBR congestion control algorithm? (On/Off)" "Off")
-proxy=$(ask "Add proxy performance optimization? (On/Off)" "On")
+proxy=$(ask "Add proxy performance optimization? (if MTK_CPU must be Off!)  (On/Off)" "On")
 
 # --- Display Configuration Summary ---
 clear
@@ -68,7 +68,7 @@ echo "✅ All dependencies installed successfully."
 # Set up and improve ccache
 # Generous size for local builds
 echo "⚙️ Setting up ccache..."
-export CCACHE_DIR="$HOME/.ccache_${FEIL}_NEXT"
+export CCACHE_DIR="$HOME/.ccache_${FEIL}_Kernel"
 export CCACHE_COMPILERCHECK="%compiler% -dumpmachine; %compiler% -dumpversion"
 export CCACHE_NOHASHDIR="true"
 export CCACHE_HARDLINK="true"
@@ -112,7 +112,7 @@ echo "🔄 Syncing repositories (using $(nproc --all) threads)..."
 repo sync -c -j$(nproc --all) --no-tags --no-clone-bundle --force-sync
 
 export adv=$ANDROID_VERSION
-echo "-$adv-oki-xiaoxiaow"
+echo "kernel_name: -$adv-oki-xiaoxiaow"
 echo "🔧 Cleaning up and modifying version strings..."
 rm -f kernel_platform/common/android/abi_gki_protected_exports_* || echo "No protected exports to remove from common!"
 rm -f kernel_platform/msm-kernel/android/abi_gki_protected_exports_* || echo "No protected exports to remove from msm-kernel!"
@@ -133,33 +133,13 @@ cd ..
 # --- Kernel Customization ---
 cd kernel_workspace
 
-# Setup KernelSU Next
-echo "⚡ Setting up KernelSU Next..."
-cd kernel_platform
-curl -LSs "https://raw.githubusercontent.com/pershoot/KernelSU-Next/next-susfs/kernel/setup.sh" | bash -s next-susfs
-
-# Get KSU Version info
-cd KernelSU-Next
-KSU_VERSION=$(expr $(curl -sI "https://api.github.com/repos/KernelSU-Next/KernelSU-Next/commits?sha=next&per_page=1" | grep -i "link:" | sed -n 's/.*page=\([0-9]*\)>; rel="last".*/\1/p') "+" 10200)
-export KSUVER=$(expr $KSU_VERSION)
-sed -i "s/DKSU_VERSION=11998/DKSU_VERSION=${KSU_VERSION}/" kernel/Makefile
-
-echo "✅ KernelSU Next configured."
-cd ../..
-# Back to $WORKSPACE/kernel_workspace
-
-# Set up SUSFS and other patches
+# Set up Zram and other patches
 echo "🔧 Setting up SUSFS and applying patches..."
-git clone https://gitlab.com/simonpunk/susfs4ksu.git -b gki-${ANDROID_VERSION}-${KERNEL_VERSION}
 git clone https://github.com/Xiaomichael/kernel_patches.git
 git clone https://github.com/ShirkNeko/SukiSU_patch.git
 
 cd kernel_platform
 echo "📝 Copying patch files..."
-cp ../susfs4ksu/kernel_patches/50_add_susfs_in_gki-${ANDROID_VERSION}-${KERNEL_VERSION}.patch ./common/
-cp ../kernel_patches/next/scope_min_manual_hooks_v1.4.patch ./common/
-cp ../susfs4ksu/kernel_patches/fs/* ./common/fs/
-cp ../susfs4ksu/kernel_patches/include/linux/* ./common/include/linux/
 
 if [ "$lz4kd" = "Off" ] && [ "$KERNEL_VERSION" = "6.1" ]; then
   echo "📦 Copying lz4+zstd patches..."
@@ -178,10 +158,6 @@ fi
 
 echo "🔧 Applying patches..."
 cd ./common
-patch -p1 < 50_add_susfs_in_gki-${ANDROID_VERSION}-${KERNEL_VERSION}.patch || true
-cp ../../kernel_patches/69_hide_stuff.patch ./
-patch -p1 -F 3 < 69_hide_stuff.patch || true
-patch -p1 --fuzz=3 < scope_min_manual_hooks_v1.4.patch
 
 if [ "$lz4kd" = "Off" ] && [ "$KERNEL_VERSION" = "6.1" ]; then
   echo "📦 Applying lz4+zstd patches..."
@@ -204,28 +180,7 @@ cd ../..
 echo "⚙️ Configuring kernel build options (defconfig)..."
 DEFCONFIG_PATH="$WORKSPACE/kernel_workspace/kernel_platform/common/arch/arm64/configs/gki_defconfig"
 
-cat <<EOT >> "$DEFCONFIG_PATH"
-
-#--- KernelSU Next & SUSFS Custom Configs ---
-CONFIG_KSU=y
-CONFIG_KSU_KPROBES_HOOK=n
-CONFIG_KSU_SUSFS=y
-CONFIG_KSU_SUSFS_HAS_MAGIC_MOUNT=y
-CONFIG_KSU_SUSFS_SUS_PATH=y
-CONFIG_KSU_SUSFS_SUS_MOUNT=y
-CONFIG_KSU_SUSFS_AUTO_ADD_SUS_KSU_DEFAULT_MOUNT=y
-CONFIG_KSU_SUSFS_AUTO_ADD_SUS_BIND_MOUNT=y
-CONFIG_KSU_SUSFS_SUS_KSTAT=y
-CONFIG_KSU_SUSFS_SUS_OVERLAYFS=n
-CONFIG_KSU_SUSFS_TRY_UMOUNT=y
-CONFIG_KSU_SUSFS_AUTO_ADD_TRY_UMOUNT_FOR_BIND_MOUNT=y
-CONFIG_KSU_SUSFS_SPOOF_UNAME=y
-CONFIG_KSU_SUSFS_ENABLE_LOG=y
-CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y
-CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y
-CONFIG_KSU_SUSFS_OPEN_REDIRECT=y
-CONFIG_KSU_SUSFS_SUS_SU=n
-EOT
+if [ "$KPM" = "On" ]; then echo "CONFIG_KPM=y" >> "$DEFCONFIG_PATH"; fi
 
 if [ "$bbr" = "On" ]; then
   echo "🌐 Enabling BBR..."
@@ -300,7 +255,7 @@ cd "$WORKSPACE/kernel_workspace/kernel_platform/common"
 MAKE_CMD_COMMON="make -j$(nproc --all) LLVM=1 ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- CC=\"ccache clang\" RUSTC=../../prebuilts/rust/linux-x86/1.73.0b/bin/rustc PAHOLE=../../prebuilts/kernel-build-tools/linux-x86/bin/pahole LD=ld.lld HOSTLD=ld.lld O=out gki_defconfig all"
 
 if [ "$KERNEL_VERSION" = "6.1" ]; then
-    export KBUILD_BUILD_TIMESTAMP="Mon Jul 7 01:51:02 UTC 2025"
+    export KBUILD_BUILD_TIMESTAMP="Wed Aug  6 13:29:27 UTC 2025"
     export KBUILD_BUILD_VERSION=1
     export PATH="$WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
     eval "$MAKE_CMD_COMMON KCFLAGS+=-O2"
@@ -331,15 +286,7 @@ echo "✅ Kernel Image found at: $IMAGE_PATH"
 cp "$IMAGE_PATH" ./AnyKernel3/Image
 
 # --- Finalize and Upload ---
-
-if [ "$lz4kd" = "On" ]; then
-  ARTIFACT_NAME="AnyKernel3_KernelSU_Next_lz4kd_${KSUVER}_${FEIL}"
-elif [ "$KERNEL_VERSION" = "6.1" ]; then
-  ARTIFACT_NAME="AnyKernel3_KernelSU_Next_lz4_zstd_${KSUVER}_${FEIL}"
-else
-  ARTIFACT_NAME="AnyKernel3_KernelSU_Next_${KSUVER}_${FEIL}"
-fi
-FINAL_ZIP_NAME="${ARTIFACT_NAME}.zip"
+FINAL_ZIP_NAME="AnyKernel3_${FEIL}_Kernel_Only.zip"
 
 echo "📦 Creating final zip file: ${FINAL_ZIP_NAME}..."
 cd AnyKernel3 && zip -q -r9 "../${FINAL_ZIP_NAME}" ./* && cd ..
@@ -351,14 +298,14 @@ echo "               Build Complete!"
 echo "================================================="
 echo "-> Flashable Zip: $WORKSPACE/${FINAL_ZIP_NAME}"
 
-if [ "$lz4kd" = "On" ]; then
-    ZRAM_KO_PATH=$(find "$WORKSPACE/kernel_workspace/kernel_platform/common/out/" -name "zram.ko" | head -n 1)
-    if [ -n "$ZRAM_KO_PATH" ]; then
-        cp "$ZRAM_KO_PATH" "$WORKSPACE/"
-        echo "-> zram.ko module: $WORKSPACE/zram.ko"
-    fi
+ZRAM_KO_PATH=$(find "$WORKSPACE/kernel_workspace/kernel_platform/common/out/" -name "zram.ko" | head -n 1)
+if [ -n "$ZRAM_KO_PATH" ]; then
+    cp "$ZRAM_KO_PATH" "$WORKSPACE/"
+    echo "-> zram.ko module: $WORKSPACE/zram.ko"
 fi
+
 echo "================================================="
 echo ""
 
+echo "📊 Displaying disk statistics:"
 df -h

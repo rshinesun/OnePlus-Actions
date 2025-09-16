@@ -6,7 +6,7 @@
 
 ## OnePlus Kernel 开源地址
 
-[![GitHub Repository](https://img.shields.io/badge/GitHub-Repository-blue)](https://github.com/Xiaomichael/kernel_manifest)
+[![OnePlus Repository](https://img.shields.io/badge/OnePlus-Repository-red)](https://github.com/Xiaomichael/kernel_manifest)
 
 ## 设备支持
 
@@ -34,6 +34,7 @@
 ### 如何查看处理器代号
 
 ![处理器代号查看方法](https://github.com/user-attachments/assets/fc217103-24ef-45fa-a7e1-f13cfd64f771)
+在对应分支下面有写，如果出现的是`using make build`就不用管
 
 ## 开关建议
 

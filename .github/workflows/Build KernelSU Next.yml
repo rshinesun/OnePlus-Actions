@@ -99,7 +99,7 @@ on:
        default: 'Off'
 
       proxy:
-       description: "是否添加代理性能优化"
+       description: "是否添加代理性能优化(MTK系列跑的时候请关闭否则出现恶性bug)"
        required: true
        type: choice
        options:
@@ -130,7 +130,14 @@ jobs:
           remove-android: 'true'
           remove-haskell: 'true'
           remove-codeql: 'true'
-          
+
+      - name: "⚙️ Setup Cache Env | 设置缓存环境"
+        run: |
+          echo "🔧 正在设置机型隔离缓存目录..."
+          echo "CCACHE_DIR=$HOME/.ccache_${{ github.event.inputs.FEIL }}_Next" >> $GITHUB_ENV
+          mkdir -p "$HOME/.ccache_${{ github.event.inputs.FEIL }}_Next"
+          echo "✅ 缓存目录已设置: $HOME/.ccache_${{ github.event.inputs.FEIL }}_Next" 
+
       - name: "🔐 Configure Git | 配置Git账户"
         run: |
           echo "🔧 正在配置Git用户信息..."
@@ -157,7 +164,7 @@ jobs:
         uses: actions/cache@v3
         with:
           path: ${{ env.HOME }}/apt-cache
-          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/Build SukiSU Ultra.yml') }}
+          key: ${{ runner.os }}-apt-${{ hashFiles('.github/workflows/Build KernelSU Next.yml') }}
           restore-keys: |
             ${{ runner.os }}-apt-
 
@@ -180,10 +187,32 @@ jobs:
       - name: "💾 Restore ccache | 恢复ccache缓存"
         uses: actions/cache@v3
         with:
-          path: /home/runner/.ccache
-          key: ccache-${{ runner.os }}-${{ github.ref }}
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ runner.os }}-${{ github.ref }}-${{ github.event.inputs.FEIL }}-Next
           restore-keys: |
-            ccache-${{ runner.os }}-
+            ccache-${{ runner.os }}-${{ github.event.inputs.FEIL }}-Next
+            ccache-${{ runner.os }}-Next
+
+      - name: "⚙️ Initialize ccache | 初始化ccache"
+        run: |
+          echo "🔧 正在初始化ccache..."
+          INIT_FLAG="${{ env.CCACHE_DIR }}/.ccache_initialized"
+          
+          if command -v ccache >/dev/null 2>&1; then
+            if [ ! -f "$INIT_FLAG" ]; then
+              mkdir -p "${{ env.CCACHE_DIR }}"
+              ccache -M ${{ env.CCACHE_MAXSIZE }}
+              touch "$INIT_FLAG"
+              echo "🆕 ccache初始化完成"
+            else
+              echo "ℹ️ ccache已存在，跳过初始化"
+            fi
+          else
+            echo "⚠️ 未找到ccache命令，跳过初始化"
+          fi
+          # 显示缓存统计
+          ccache -s
+          echo "✅ ccache初始化流程完成"
 
       # ====================== 源码准备阶段 ======================
       - name: "📥 Install Repo Tool | 安装Repo工具"
@@ -284,6 +313,7 @@ jobs:
           echo "⚙️ 正在配置内核编译选项..."
           cd kernel_workspace/kernel_platform
           
+          echo "📦 启用 Manual Hook..."
           # Add KSU configuration settings
           echo "CONFIG_KSU=y" >> ./common/arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_KPROBES_HOOK=n" >> ./common/arch/arm64/configs/gki_defconfig
@@ -372,7 +402,7 @@ jobs:
         run: |
           echo "🏗️ 开始内核编译..."
           if [ "${{ github.event.inputs.KERNEL_VERSION }}" == "6.1" ]; then
-            export KBUILD_BUILD_TIMESTAMP="Mon Jul 7 01:51:02 UTC 2025"
+            export KBUILD_BUILD_TIMESTAMP="Wed Aug  6 13:29:27 UTC 2025"
             export KBUILD_BUILD_VERSION=1
             export PATH="$GITHUB_WORKSPACE/kernel_workspace/kernel_platform/prebuilts/clang/host/linux-x86/clang-r487747c/bin:$PATH"
             export PATH="/usr/lib/ccache:$PATH"
@@ -423,11 +453,11 @@ jobs:
         id: set_name
         run: |
           if [ "${{ github.event.inputs.lz4kd }}" = "On" ]; then
-            echo "ARTIFACT_NAME=AnyKernel3_KernelSU_Next_lz4kd_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}" >> $GITHUB_OUTPUT
+            echo "ARTIFACT_NAME=${{ github.event.inputs.FEIL }}_KernelSU_Next_lz4kd_${{ env.KSUVER }}" >> $GITHUB_OUTPUT
           elif [ "${{ github.event.inputs.KERNEL_VERSION }}" = "6.1" ]; then
-            echo "ARTIFACT_NAME=AnyKernel3_KernelSU_Next_lz4_zstd_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}" >> $GITHUB_OUTPUT
+            echo "ARTIFACT_NAME=${{ github.event.inputs.FEIL }}_KernelSU_Next_lz4_zstd_${{ env.KSUVER }}" >> $GITHUB_OUTPUT
           else
-            echo "ARTIFACT_NAME=AnyKernel3_KernelSU_Next_${{ env.KSUVER }}_${{ github.event.inputs.FEIL }}" >> $GITHUB_OUTPUT
+            echo "ARTIFACT_NAME=${{ github.event.inputs.FEIL }}_KernelSU_Next_${{ env.KSUVER }}" >> $GITHUB_OUTPUT
           fi
          
       - name: "📤 Upload AnyKernel3 | 上传 AnyKernel3"
@@ -437,13 +467,13 @@ jobs:
          path: ./AnyKernel3/*
 
       - name: "📝 Find zram.ko & crypto_zstdn.ko | 查找 zram.ko & crypto_zstdn.ko"
-        if: ${{ github.event.inputs.lz4kd == 'On' }}
+        # if: ${{ github.event.inputs.lz4kd == 'On' }}
         run: |
           find -name zram.ko
           find -name crypto_zstdn.ko
           
       - name: "📤 Upload zram.ko | 上传 zram.ko"
-        if: ${{ github.event.inputs.lz4kd == 'On' }}
+        # if: ${{ github.event.inputs.lz4kd == 'On' }}
         uses: actions/upload-artifact@v4
         with:
           name: zram.ko
